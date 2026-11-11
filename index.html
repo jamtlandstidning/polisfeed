@@ -4,59 +4,89 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Polishändelser i Jämtland – JT</title>
+<title>Blåljus i Jämtland – Jämtlands Tidning</title>
 <style>
 * { box-sizing: border-box; }
+
 body {
   margin: 0;
   font-family: Arial, sans-serif;
-  color: #222;
   background: #fff;
+  color: #222;
 }
+
 .feed { padding: 12px; }
+
 h2 {
-  font-size: 21px;
-  margin: 0 0 5px;
+  font-size: 22px;
+  margin: 0 0 6px;
 }
+
 .subtitle {
   color: #666;
   font-size: 12px;
   margin-bottom: 12px;
 }
+
 .event {
   padding: 13px 0;
   border-bottom: 1px solid #ddd;
 }
+
 .date {
   font-size: 12px;
   color: #666;
   margin-bottom: 5px;
 }
+
 .event a {
   color: #222;
   font-size: 16px;
   font-weight: bold;
   text-decoration: none;
 }
+
 .event a:hover { text-decoration: underline; }
+
 .event p {
   font-size: 13px;
   line-height: 1.5;
   margin: 6px 0 0;
 }
+
+.more {
+  display: block;
+  padding: 16px 0;
+  font-size: 15px;
+  font-weight: bold;
+  color: #222;
+  text-decoration: none;
+}
+
+.more:hover { text-decoration: underline; }
+
 .footer {
   font-size: 12px;
-  color: #666;
-  padding-top: 12px;
+  color: #777;
+  padding-top: 10px;
 }
-.footer a { color: inherit; }
 </style>
 </head>
+
 <body>
 <div class="feed">
-  <h2>Senaste från polisen</h2>
-  <div class="subtitle">Polishändelser i Jämtlands län</div>
-  <div id="events" aria-live="polite">Hämtar händelser...</div>
+  <h2>Blåljus i Jämtland</h2>
+  <div class="subtitle">
+    Senaste händelserna från Polisen
+  </div>
+
+  <div id="events">Hämtar polishändelser...</div>
+
+  <a id="more" class="more" href="?alla=1"
+     target="_blank" rel="noopener">
+    Visa fler polishändelser →
+  </a>
+
   <div class="footer">
     Källa: Polismyndigheten.
     Uppgifterna är preliminära.
@@ -64,34 +94,57 @@ h2 {
 </div>
 
 <script>
+const showAll =
+  new URLSearchParams(window.location.search).has("alla");
+
 const endpoint =
   "https://polisen.se/api/events?locationname=" +
   encodeURIComponent("Jämtlands län");
 
-function textElement(tag, content, className) {
-  const el = document.createElement(tag);
-  el.textContent = content;
-  if (className) el.className = className;
-  return el;
+if (showAll) {
+  document.getElementById("more").style.display = "none";
+}
+
+function addText(tag, value, className) {
+  const element = document.createElement(tag);
+  element.textContent = value;
+  if (className) element.className = className;
+  return element;
 }
 
 async function loadEvents() {
   const container = document.getElementById("events");
+
   try {
-    const response = await fetch(endpoint, { cache: "no-store" });
+    const response = await fetch(endpoint, {
+      cache: "no-store"
+    });
+
     if (!response.ok) throw new Error("API-fel");
+
     const data = await response.json();
 
     const events = data
-      .filter(e => (e.location?.name || "")
-        .toLowerCase().includes("jämtland"))
-      .sort((a, b) => new Date(b.datetime) - new Date(a.datetime))
-      .slice(0, 6);
+      .filter(event => {
+        const locations = event.location || [];
+        const names = Array.isArray(locations)
+          ? locations.map(loc => loc.name || "")
+          : [locations.name || ""];
+
+        return names.some(name =>
+          name.toLowerCase().includes("jämtland")
+        );
+      })
+      .sort((a, b) =>
+        new Date(b.datetime) - new Date(a.datetime)
+      )
+      .slice(0, showAll ? 30 : 6);
 
     container.replaceChildren();
 
     if (!events.length) {
-      container.textContent = "Inga aktuella händelser att visa.";
+      container.textContent =
+        "Inga polishändelser att visa just nu.";
       return;
     }
 
@@ -103,27 +156,42 @@ async function loadEvents() {
       const dateText = Number.isNaN(date.getTime())
         ? event.datetime
         : date.toLocaleString("sv-SE", {
-            day: "numeric", month: "short",
-            hour: "2-digit", minute: "2-digit",
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
             timeZone: "Europe/Stockholm"
           });
 
-      item.appendChild(textElement("div", dateText, "date"));
+      item.appendChild(
+        addText("div", dateText, "date")
+      );
 
       const link = document.createElement("a");
-      link.textContent = event.name || event.type || "Polishändelse";
-      const url = new URL(event.url, "https://polisen.se");
-      if (url.hostname === "polisen.se" ||
-          url.hostname.endsWith(".polisen.se")) {
-        link.href = url.href;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-      }
+      link.textContent =
+        event.name || event.type || "Polishändelse";
+
+      try {
+        const url = new URL(
+          event.url, "https://polisen.se"
+        );
+
+        if (url.hostname === "polisen.se" ||
+            url.hostname.endsWith(".polisen.se")) {
+          link.href = url.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+        }
+      } catch (e) {}
+
       item.appendChild(link);
 
       if (event.summary) {
-        item.appendChild(textElement("p", event.summary));
+        item.appendChild(
+          addText("p", event.summary)
+        );
       }
+
       container.appendChild(item);
     }
   } catch (error) {
